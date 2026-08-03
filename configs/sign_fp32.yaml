@@ -1,0 +1,126 @@
+# =====================================================================
+# PHASE 1 -- FP32 pretraining on PHOENIX-2014T
+# =====================================================================
+# Run with:  python -m signjoey train configs/phoenix14t_float.yaml
+#
+# VERIFY BEFORE RUNNING (I cannot see your actual data folder, so
+# double-check these against the files you actually downloaded):
+#   - data.data_path / train / dev / test file names
+#   - data.feature_size (1024 is the usual PHOENIX14T CNN-feature size,
+#     but confirm against your extracted features)
+#   - data.version must be "phoenix_2014_trans" for PHOENIX-2014T
+# =====================================================================
+
+data:
+  data_path: ./data/phoenix14t
+  version: phoenix_2014_trans
+  train: phoenix14t.pami0.train
+  dev: phoenix14t.pami0.dev
+  test: phoenix14t.pami0.test
+  feature_size: 1024
+  level: word
+  txt_lowercase: true
+  max_sent_length: 400
+  random_train_subset: -1   # set e.g. 200 for a quick smoke test first
+
+model:
+  quantize: false            # <-- FP32 phase: every QuantAct/QuantLinear/...
+                              #     runs plain nn.Linear/nn.LayerNorm/... math
+  initializer: xavier
+  bias_initializer: zeros
+  init_gain: 1.0
+  embed_initializer: xavier
+  embed_init_gain: 1.0
+  tied_softmax: false
+
+  encoder:
+    type: transformer
+    attention_type: reluformer
+    num_layers: 3
+    num_heads: 8
+    hidden_size: 512
+    ff_size: 2048
+    dropout: 0.1
+    embeddings:
+      embedding_dim: 512
+      norm_type: layer
+      activation_type: gelu
+      scale: false
+      dropout: 0.1
+
+  decoder:
+    type: transformer
+    attention_type: softmax   # reluformer is only validated for encoder
+                               # self-attention so far in our testing;
+                               # keep the decoder on softmax for now
+    num_layers: 3
+    num_heads: 8
+    hidden_size: 512
+    ff_size: 2048
+    dropout: 0.1
+    embeddings:
+      embedding_dim: 512
+      norm_type: layer
+      activation_type: gelu
+      scale: false
+      dropout: 0.1
+
+training:
+  model_dir: models/phoenix14t_float
+  overwrite: false
+  # load_model: models/phoenix14t_float/best.ckpt   # <-- uncomment to resume
+                                                       #     an interrupted run
+                                                       #     (model_dir is kept
+                                                       #      in place now, see
+                                                       #      the make_model_dir fix)
+
+  random_seed: 42
+  use_cuda: true             # set false if training on CPU
+
+  epochs: 100
+  batch_size: 32
+  batch_type: sentence
+  eval_batch_size: 32
+  eval_batch_type: sentence
+  batch_multiplier: 1
+  shuffle: true
+
+  optimizer: adam
+  learning_rate: 0.001        # normal FP32 LR is fine here -- the QAT
+                               # instability we found in testing only
+                               # showed up when this was too aggressive
+                               # (we used 0.005 in the toy test); this is
+                               # more conservative for the real model
+  weight_decay: 0.0
+  clip_grad_norm: 1.0         # IMPORTANT -- this is what kept scores from
+                               # exploding when we later switch to QAT
+  scheduling: plateau
+  patience: 8
+  decrease_factor: 0.5
+  learning_rate_min: 0.00000001
+
+  # recognition (CTC) + translation, weighted -- set recognition_loss_weight
+  # to 0.0 if you only care about translation (do_recognition becomes False)
+  recognition_loss_weight: 1.0
+  translation_loss_weight: 1.0
+  label_smoothing: 0.1
+
+  # ReLUFormer entropy/norm regularization -- keep this ON during FP32
+  # pretraining too, not just QAT. This is what keeps attention scores
+  # in a sane range so the later switch to quantize:true doesn't explode
+  # (this was the actual root cause we found and fixed in testing).
+  attn_reg_loss_weight: 0.05
+
+  eval_metric: bleu
+  early_stopping_metric: eval_metric
+  eval_recognition_beam_size: 1
+  eval_translation_beam_size: 1
+  eval_translation_beam_alpha: -1
+  translation_max_output_length: 60
+
+  validation_freq: 500        # checkpoints only save on new-best score --
+                               # keep this from being too large for a
+                               # multi-day run, or you risk losing more
+                               # progress if it crashes
+  logging_freq: 100
+  keep_last_ckpts: 5
