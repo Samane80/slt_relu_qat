@@ -27,7 +27,7 @@ from signjoey.phoenix_utils.phoenix_cleanup import (
     clean_phoenix_2014,
     clean_phoenix_2014_trans,
 )
-from signjoey.phoenix_utils.prediction_cleanup import clean_prediction
+# from signjoey.phoenix_utils.phoenix_cleanup import clean_prediction
 
 
 # pylint: disable=too-many-arguments,too-many-locals,no-member
