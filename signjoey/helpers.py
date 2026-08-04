@@ -283,11 +283,24 @@ def freeze_params(module: nn.Module):
 
 
 def symlink_update(target, link_name):
+    """
+    Create a link (or copy) from target to link_name.
+    On Google Drive, symbolic links are not supported, so we use copy instead.
+    """
     try:
-        os.symlink(target, link_name)
-    except FileExistsError as e:
-        if e.errno == errno.EEXIST:
+        # Try symbolic link first (works on local filesystem)
+        if os.path.islink(link_name):
             os.remove(link_name)
-            os.symlink(target, link_name)
-        else:
-            raise e
+        os.symlink(target, link_name)
+        return link_name
+    except OSError:
+        # If symlink fails (e.g., on Google Drive), use copy instead
+        try:
+            import shutil
+            if os.path.exists(link_name):
+                os.remove(link_name)
+            shutil.copy2(target, link_name)
+            return link_name
+        except Exception as e:
+            print(f"Warning: Could not create link/copy {link_name}: {e}")
+            return None
