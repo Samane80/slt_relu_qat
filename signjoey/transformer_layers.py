@@ -185,7 +185,7 @@ class TransformerEncoderLayer(nn.Module):
         )
         self.qact_attn = QuantAct()
         self.qact_res1 = QuantAct()
-        self.qact_res2 = QuantAct()
+        # self.qact_res2 = QuantAct()
 
         self.feed_forward = Mlp(
             in_features=size,
@@ -217,10 +217,10 @@ class TransformerEncoderLayer(nn.Module):
             res, res_sf = self.qact_res1(
                 h, h_sf, identity=x, identity_scaling_factor=x_sf
             )
-            # o, o_sf = self.feed_forward(res, res_sf)
-            ff, ff_sf = self.feed_forward(res, res_sf)
-            o, o_sf = self.qact_res2(ff, ff_sf, identity=res, identity_scaling_factor=res_sf)
-            return o, o_sf
+            o, o_sf = self.feed_forward(res, res_sf)
+            # ff, ff_sf = self.feed_forward(res, res_sf)
+            # o, o_sf = self.qact_res2(ff, ff_sf, identity=res, identity_scaling_factor=res_sf)
+            # return o, o_sf
 
 
 class TransformerDecoderLayer(nn.Module):
@@ -269,7 +269,7 @@ class TransformerDecoderLayer(nn.Module):
             drop=dropout
         )
         self.dropout = nn.Dropout(dropout)
-        self.qact_res3 = QuantAct()
+        # self.qact_res3 = QuantAct()
 
     @property
     def reg_loss(self):
@@ -322,8 +322,8 @@ class TransformerDecoderLayer(nn.Module):
             h2, h2_sf, identity=h1, identity_scaling_factor=h1_sf
         )
 
-        # o, o_sf = self.feed_forward(h2, h2_sf)
-        ff, ff_sf = self.feed_forward(h2, h2_sf)
-        o, o_sf = self.qact_res3(ff, ff_sf, identity=h2, identity_scaling_factor=h2_sf)
+        o, o_sf = self.feed_forward(h2, h2_sf)
+        # ff, ff_sf = self.feed_forward(h2, h2_sf)
+        # o, o_sf = self.qact_res3(ff, ff_sf, identity=h2, identity_scaling_factor=h2_sf)
 
         return o, o_sf
