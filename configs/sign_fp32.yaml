@@ -40,13 +40,13 @@ model:
     num_heads: 8
     hidden_size: 512
     ff_size: 2048
-    dropout: 0.1
+    dropout: 0.15
     embeddings:
       embedding_dim: 512
       norm_type: layer
       activation_type: gelu
       scale: false
-      dropout: 0.1
+      dropout: 0.15
 
   decoder:
     type: transformer
@@ -57,17 +57,18 @@ model:
     num_heads: 8
     hidden_size: 512
     ff_size: 2048
-    dropout: 0.1
+    dropout: 0.15
     embeddings:
       embedding_dim: 512
       norm_type: layer
       activation_type: gelu
       scale: false
-      dropout: 0.1
+      dropout: 0.15
 
 training:
   model_dir: models/phoenix14t_float
-  overwrite: false
+  # overwrite: false
+  overwrite: true
   # load_model: models/phoenix14t_float/best.ckpt   # <-- uncomment to resume
                                                        #     an interrupted run
                                                        #     (model_dir is kept
@@ -101,7 +102,7 @@ training:
 
   # recognition (CTC) + translation, weighted -- set recognition_loss_weight
   # to 0.0 if you only care about translation (do_recognition becomes False)
-  recognition_loss_weight: 1.0
+  recognition_loss_weight: 5.0
   translation_loss_weight: 1.0
   label_smoothing: 0.1
 
@@ -119,8 +120,13 @@ training:
   translation_max_output_length: 60
 
   validation_freq: 500        # checkpoints only save on new-best score --
+
+  validation_freq: 100        # checkpoints only save on new-best score --
                                # keep this from being too large for a
                                # multi-day run, or you risk losing more
                                # progress if it crashes
   logging_freq: 100
   keep_last_ckpts: 5
+
+  keep_last_ckpts: 5
+ 
