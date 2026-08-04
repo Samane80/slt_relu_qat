@@ -8,7 +8,7 @@ from torch import nn
 from torch import Tensor
 import torch.nn.functional as F
 
-from quantization_utils.quant_modules import QuantLinear, QuantAct, QuantConv2d, IntGELU
+from quantization_utils.quant_modules import QuantLinear, QuantAct, QuantConv2d, IntGELU,IntLayerNorm
 
 
 def _ntuple(n):
