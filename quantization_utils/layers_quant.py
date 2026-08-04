@@ -115,56 +115,71 @@ class DropPath(nn.Module):
 
 
 class Mlp(nn.Module):
+    """
+    QAT-compatible PositionwiseFeedForward (JoeyNMT style).
+
+    Structure matches slt_relu.PositionwiseFeedForward:
+        LayerNorm → Linear → ReLU → Dropout → Linear → Dropout → + residual
+
+    Residual and LN live *inside* this module, so callers must NOT add
+    another residual around the FFN output (that would double the skip).
+    """
+
     def __init__(
-            self,
-            in_features,
-            hidden_features=None,
-            out_features=None,
-            act_layer=IntGELU,
-            drop=0.0):
+        self,
+        in_features,
+        hidden_features=None,
+        out_features=None,
+        drop=0.0,
+        **kwargs,  # ignore legacy act_layer=IntGELU if passed
+    ):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
- 
-        # ✅ pwff_layer با ModuleList — ایندکس‌ها match با pretrained Sequential:
-        #   [0] = Linear(input_size, ff_size)    → QuantLinear
-        #   [1] = ReLU()                          → act_layer() (IntGELU)
-        #   [2] = Dropout(dropout)                → nn.Dropout
-        #   [3] = Linear(ff_size, input_size)    → QuantLinear
-        #   [4] = Dropout(dropout)                → nn.Dropout
-        self.pwff_layer = nn.ModuleList([
-            QuantLinear(in_features, hidden_features),   # [0] match pretrained
-            act_layer(),                                  # [1] IntGELU به جای ReLU
-            nn.Dropout(drop),                            # [2]
-            QuantLinear(hidden_features, out_features),  # [3] match pretrained
-            nn.Dropout(drop),                            # [4]
-        ])
- 
-        # QuantAct های اضافه برای QAT pipeline
-        self.qact_gelu = QuantAct()   # قبل از IntGELU
-        self.qact1 = QuantAct()       # بعد از IntGELU
-        self.qact2 = QuantAct(16)     # بعد از fc دوم
- 
+
+        # Pre-LN (same as PositionwiseFeedForward.layer_norm)
+        self.layer_norm = IntLayerNorm(in_features, eps=1e-6)
+        self.qact_ln = QuantAct()
+
+        # Linear → ReLU → Drop → Linear → Drop
+        self.fc1 = QuantLinear(in_features, hidden_features)
+        self.qact_fc1 = QuantAct()
+        self.drop1 = nn.Dropout(drop)
+        self.fc2 = QuantLinear(hidden_features, out_features)
+        self.qact_fc2 = QuantAct(16)
+        self.drop2 = nn.Dropout(drop)
+
+        # Residual re-quant (identity path)
+        self.qact_res = QuantAct()
+
     def forward(self, x, act_scaling_factor):
-        # ── Linear اول (pwff_layer[0]) ────────────────────────────────────
-        x, act_scaling_factor = self.pwff_layer[0](x, act_scaling_factor)
-        x, act_scaling_factor = self.qact_gelu(x, act_scaling_factor)
- 
-        # ── Activation (pwff_layer[1] = IntGELU) ──────────────────────────
-        x, act_scaling_factor = self.pwff_layer[1](x, act_scaling_factor)
-        x, act_scaling_factor = self.qact1(x, act_scaling_factor)
- 
-        # ── Dropout (pwff_layer[2]) ───────────────────────────────────────
-        x = self.pwff_layer[2](x)
- 
-        # ── Linear دوم (pwff_layer[3]) ────────────────────────────────────
-        x, act_scaling_factor = self.pwff_layer[3](x, act_scaling_factor)
-        x, act_scaling_factor = self.qact2(x, act_scaling_factor)
- 
-        # ── Dropout (pwff_layer[4]) ───────────────────────────────────────
-        x = self.pwff_layer[4](x)
- 
-        return x, act_scaling_factor
+        residual, residual_sf = x, act_scaling_factor
+
+        # LN
+        x, sf = self.layer_norm(x, act_scaling_factor)
+        x, sf = self.qact_ln(x, sf)
+
+        # Linear 1
+        x, sf = self.fc1(x, sf)
+        x, sf = self.qact_fc1(x, sf)
+
+        # ReLU — scale unchanged (non-negative pass-through)
+        x = F.relu(x)
+
+        x = self.drop1(x)
+
+        # Linear 2
+        x, sf = self.fc2(x, sf)
+        x, sf = self.qact_fc2(x, sf)
+
+        x = self.drop2(x)
+
+        # residual: out = FFN(LN(x)) + x
+        out, out_sf = self.qact_res(
+            x, sf, identity=residual, identity_scaling_factor=residual_sf
+        )
+        return out, out_sf
+
 
 
 
