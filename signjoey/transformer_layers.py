@@ -218,9 +218,7 @@ class TransformerEncoderLayer(nn.Module):
                 h, h_sf, identity=x, identity_scaling_factor=x_sf
             )
             o, o_sf = self.feed_forward(res, res_sf)
-            # ff, ff_sf = self.feed_forward(res, res_sf)
-            # o, o_sf = self.qact_res2(ff, ff_sf, identity=res, identity_scaling_factor=res_sf)
-            # return o, o_sf
+            return o, o_sf
 
 
 class TransformerDecoderLayer(nn.Module):
