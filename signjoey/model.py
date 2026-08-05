@@ -83,7 +83,10 @@ class SignModel(nn.Module):
         )
 
         if self.do_recognition:
-            gloss_scores = self.gloss_output_layer(encoder_output)
+            # ✅ گلاس_اوت‌پوت_لیر حالا QuantLinear است -> خروجی تاپل (scores, sf) است.
+            # sf ورودی (encoder_hidden) را پاس می‌دهیم تا هم در حالت quantize=True
+            # هم quantize=False (که آن را نادیده می‌گیرد) درست کار کند.
+            gloss_scores, _ = self.gloss_output_layer(encoder_output, encoder_hidden)
             gloss_probabilities = gloss_scores.log_softmax(2)
             gloss_probabilities = gloss_probabilities.permute(1, 0, 2)
         else:
@@ -261,7 +264,8 @@ class SignModel(nn.Module):
         )
 
         if self.do_recognition:
-            gloss_scores = self.gloss_output_layer(encoder_output)
+            # ✅ همان فیکس forward(): unpack تاپل + پاس دادن sf
+            gloss_scores, _ = self.gloss_output_layer(encoder_output, encoder_hidden)
             gloss_probabilities = gloss_scores.log_softmax(2)
             gloss_probabilities = gloss_probabilities.permute(1, 0, 2)
             gloss_probabilities = gloss_probabilities.cpu().detach().numpy()
@@ -382,7 +386,8 @@ def build_model(
         )
 
     if do_recognition:
-        # gloss_output_layer = nn.Linear(encoder.output_size, len(gls_vocab))
+        # ✅ QuantLinear هم در حالت quantize=False (FP32) و هم quantize=True کار می‌کند،
+        # چون خودش داخلی بین دو مسیر سوییچ می‌کند (کافی‌ست بعداً set_quantize_mode صدا زده شود)
         gloss_output_layer = QuantLinear(encoder.output_size, len(gls_vocab))
         if cfg["encoder"].get("freeze", False):
             freeze_params(gloss_output_layer)
