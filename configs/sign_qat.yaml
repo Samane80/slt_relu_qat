@@ -1,14 +1,6 @@
 # =====================================================================
 # PHASE 2 -- QAT fine-tuning on PHOENIX-2014T
 # =====================================================================
-# Run ONLY after Phase 1 (phoenix14t_float.yaml) has finished/converged.
-# Run with:  python -m signjoey train configs/phoenix14t_qat.yaml
-#
-# Everything below is IDENTICAL to the float config except the block
-# marked "CHANGED FOR PHASE 2" -- same data, same architecture, same
-# regularization, so the checkpoint loads cleanly (strict=True, no key
-# mismatch -- verified in our test_fp32_to_qat_pipeline.py run).
-# =====================================================================
 
 data:
   data_path: ./data/phoenix14t
@@ -22,8 +14,7 @@ data:
   max_sent_length: 400
 
 model:
-  quantize: true              # <-- CHANGED FOR PHASE 2: same architecture,
-                               #     every layer now runs real fake-quant
+  quantize: true
   initializer: xavier
   bias_initializer: zeros
   init_gain: 1.0
@@ -62,25 +53,17 @@ model:
       dropout: 0.15
 
 training:
-  model_dir: models/phoenix14t_qat          # CHANGED FOR PHASE 2: a new dir
+  model_dir: models/phoenix14t_qat
   overwrite: false
-  load_model: models/phoenix14t_float/best.ckpt   # CHANGED FOR PHASE 2:
-                                                     # start from the
-                                                     # FP32-pretrained weights
-  reset_optimizer: true       # CHANGED FOR PHASE 2: fresh optimizer state --
-                               # the FP32 Adam momentum isn't meaningful for
-                               # the very different QAT/STE gradients
+  load_model: models/phoenix14t_float/best.ckpt
+  reset_optimizer: true
   reset_scheduler: true
-  reset_best_ckpt: true       # start early-stopping/best-score tracking
-                               # fresh for this phase (BLEU will likely dip
-                               # right after the switch, then recover)
+  reset_best_ckpt: true
 
   random_seed: 42
   use_cuda: true
 
-  epochs: 20                  # QAT fine-tuning needs far fewer epochs than
-                               # the original pretraining -- start here,
-                               # extend if BLEU is still improving
+  epochs: 20
   batch_size: 32
   batch_type: sentence
   eval_batch_size: 32
@@ -89,20 +72,18 @@ training:
   shuffle: true
 
   optimizer: adam
-  learning_rate: 0.00005      # CHANGED FOR PHASE 2: much smaller than the
-                               # FP32 LR -- QAT is fine-tuning, not training
-                               # from scratch
-  weight_decay: 0.0
+  learning_rate: 0.00005
+  betas: [0.9, 0.998]
+  weight_decay: 0.003
   clip_grad_norm: 1.0
   scheduling: plateau
   patience: 4
-  decrease_factor: 0.5
-  learning_rate_min: 0.00000001
+  decrease_factor: 0.7
+  learning_rate_min: 0.0000001
 
-  recognition_loss_weight: 1.0
+  recognition_loss_weight: 5.0
   translation_loss_weight: 1.0
   label_smoothing: 0.1
-
   attn_reg_loss_weight: 0.05
 
   eval_metric: bleu
@@ -112,8 +93,6 @@ training:
   eval_translation_beam_alpha: -1
   translation_max_output_length: 60
 
-  validation_freq: 300        # a bit more frequent than Phase 1 -- QAT
-                               # fine-tuning is shorter, and you want good
-                               # visibility into whether BLEU is recovering
+  validation_freq: 100
   logging_freq: 100
   keep_last_ckpts: 5
