@@ -45,7 +45,7 @@ model:
       embedding_dim: 512
       norm_type: layer
       activation_type: gelu
-      scale: false
+      scale: true
       dropout: 0.15
 
   decoder:
@@ -62,7 +62,7 @@ model:
       embedding_dim: 512
       norm_type: layer
       activation_type: gelu
-      scale: false
+      scale: true
       dropout: 0.15
 
 training:
@@ -96,7 +96,9 @@ training:
   weight_decay: 0.003
   clip_grad_norm: 1.0         # IMPORTANT -- this is what kept scores from
                                # exploding when we later switch to QAT
-  scheduling: plateau
+  scheduling: noam
+  learning_rate_warmup: 4000
+  learning_rate_factor: 1
   patience: 8
   decrease_factor: 0.7
   learning_rate_min: 0.0000001
