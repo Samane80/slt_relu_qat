@@ -40,13 +40,13 @@ model:
     num_heads: 8
     hidden_size: 512
     ff_size: 2048
-    dropout: 0.15
+    dropout: 0.1
     embeddings:
       embedding_dim: 512
-      norm_type: layer
-      activation_type: gelu
-      scale: true
-      dropout: 0.15
+      norm_type: batch
+      activation_type: softsign
+      scale: false
+      dropout: 0.1
 
   decoder:
     type: transformer
@@ -57,13 +57,13 @@ model:
     num_heads: 8
     hidden_size: 512
     ff_size: 2048
-    dropout: 0.15
+    dropout: 0.1
     embeddings:
       embedding_dim: 512
-      norm_type: layer
-      activation_type: gelu
-      scale: true
-      dropout: 0.15
+      norm_type: batch
+      activation_type: softsign
+      scale: false
+      dropout: 0.1
 
 training:
   model_dir: models/phoenix14t_float
@@ -92,20 +92,17 @@ training:
                                # showed up when this was too aggressive
                                # (we used 0.005 in the toy test); this is
                                # more conservative for the real model
-  betas: [0.9, 0.998]
-  weight_decay: 0.003
+  weight_decay: 0.0
   clip_grad_norm: 1.0         # IMPORTANT -- this is what kept scores from
                                # exploding when we later switch to QAT
-  scheduling: noam
-  learning_rate_warmup: 4000
-  learning_rate_factor: 1
+  scheduling: plateau
   patience: 8
-  decrease_factor: 0.7
-  learning_rate_min: 0.0000001
+  decrease_factor: 0.5
+  learning_rate_min: 0.00000001
 
   # recognition (CTC) + translation, weighted -- set recognition_loss_weight
   # to 0.0 if you only care about translation (do_recognition becomes False)
-  recognition_loss_weight: 5.0
+  recognition_loss_weight: 1.0
   translation_loss_weight: 1.0
   label_smoothing: 0.1
 
@@ -122,8 +119,14 @@ training:
   eval_translation_beam_alpha: -1
   translation_max_output_length: 60
 
-  validation_freq: 100        # checkpoints only save on new-best score --
+  validation_freq: 500        # checkpoints only save on new-best score --
 
+  validation_freq: 100        # checkpoints only save on new-best score --
+                               # keep this from being too large for a
+                               # multi-day run, or you risk losing more
+                               # progress if it crashes
   logging_freq: 100
+  keep_last_ckpts: 5
+
   keep_last_ckpts: 5
  
