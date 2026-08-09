@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import torch
-
+import logging
 torch.backends.cudnn.deterministic = True
 
 import argparse
@@ -316,9 +316,31 @@ class TrainManager:
         """
         model_checkpoint = load_checkpoint(path=path, use_cuda=self.use_cuda)
 
+        
+        logger = logging.getLogger(__name__)
+        
+        model_state = model_checkpoint["model_state"]
+        loaded_keys = set(model_state.keys())
+        model_keys = set(model.state_dict().keys())
+        
+        missing = model_keys - loaded_keys
+        unexpected = loaded_keys - model_keys
+        
+        logger.warning(f"Missing keys: {len(missing)}")
+        if missing:
+            logger.warning(f"First 10 missing: {list(missing)[:10]}")
+        logger.warning(f"Unexpected keys: {len(unexpected)}")
+        if unexpected:
+            logger.warning(f"First 10 unexpected: {list(unexpected)[:10]}")
+
         # restore model and optimizer parameters
         # self.model.load_state_dict(model_checkpoint["model_state"])
         model.load_state_dict(checkpoint["model_state"], strict=True)
+        
+        for name, param in model.named_parameters():
+            if "txt_embed.lut.weight" in name:
+                print("Loaded txt_embed first 5 values:", param.flatten()[:5])
+                break
 
         if not reset_optimizer:
             self.optimizer.load_state_dict(model_checkpoint["optimizer_state"])
