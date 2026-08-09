@@ -227,7 +227,7 @@ class Embeddings(nn.Module):
             x, sf = self.qact_after_norm(x, sf)
 
         if self.activation_type:
-            if self.activation_type == "gelu":
+            if self.activation_type == "softsign":
                 x, sf = self.activation(x, sf)
                 x, sf = self.qact_after_act(x, sf)
             else:
