@@ -160,11 +160,8 @@ class SignModel(nn.Module):
             unroll_steps=unroll_steps,
             hidden=decoder_hidden,
             act_scaling_factor=txt_embed_sf,
-<<<<<<< HEAD
             encoder_output_sf=encoder_hidden,  
-=======
             encoder_output_sf=encoder_hidden,  # ✅ در QAT: encoder_hidden = sf
->>>>>>> 0271e07375773fb93f98eadcf0ab00003570a23f
             query_mask=decoder_query_mask,
         )
 
