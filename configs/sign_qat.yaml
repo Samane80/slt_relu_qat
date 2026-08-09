@@ -62,9 +62,9 @@ model:
       dropout: 0.1
 
 training:
-  model_dir: models/phoenix14t_qat          # CHANGED FOR PHASE 2: a new dir
+  model_dir: /content/drive/MyDrive/slt_project/relu_output_qat          # CHANGED FOR PHASE 2: a new dir
   overwrite: false
-  load_model: models/phoenix14t_float/best.ckpt   # CHANGED FOR PHASE 2:
+  load_model: /content/drive/MyDrive/slt_project/relu_output1/best.ckpt   # CHANGED FOR PHASE 2:
                                                      # start from the
                                                      # FP32-pretrained weights
   reset_optimizer: true       # CHANGED FOR PHASE 2: fresh optimizer state --
