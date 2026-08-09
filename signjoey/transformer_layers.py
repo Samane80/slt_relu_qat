@@ -187,7 +187,6 @@ class TransformerEncoderLayer(nn.Module):
         self.qact_res1 = QuantAct()
         # self.qact_res2 = QuantAct()
 
-
         self.feed_forward = Mlp(
             in_features=size,
             hidden_features=ff_size,

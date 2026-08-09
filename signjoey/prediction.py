@@ -30,7 +30,6 @@ from signjoey.phoenix_utils.phoenix_cleanup import (
 from signjoey.phoenix_utils.prediction_cleanup import clean_prediction
 
 
-
 # pylint: disable=too-many-arguments,too-many-locals,no-member
 def validate_on_data(
     model: SignModel,

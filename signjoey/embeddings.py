@@ -5,7 +5,6 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 from signjoey.helpers import freeze_params
-
 from quantization_utils.quant_modules import (
     QuantLinear,
     QuantAct,

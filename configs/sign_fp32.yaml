@@ -127,6 +127,4 @@ training:
                                # progress if it crashes
   logging_freq: 100
   keep_last_ckpts: 5
-
-  keep_last_ckpts: 5
  

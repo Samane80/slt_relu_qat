@@ -88,7 +88,6 @@ class QuantAct(nn.Module):
             self.act_scaling_factor = symmetric_linear_quantization_params(
                 self.activation_bit, self.min_val, self.max_val).clamp(min=1e-4, max=10.0)
 
-
         if pre_act_scaling_factor is None:
             quant_act_int = self.act_function(
                 x, self.activation_bit, self.act_scaling_factor, False
