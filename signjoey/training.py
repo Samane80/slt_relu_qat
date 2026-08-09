@@ -317,7 +317,8 @@ class TrainManager:
         model_checkpoint = load_checkpoint(path=path, use_cuda=self.use_cuda)
 
         # restore model and optimizer parameters
-        self.model.load_state_dict(model_checkpoint["model_state"])
+        # self.model.load_state_dict(model_checkpoint["model_state"])
+        model.load_state_dict(checkpoint["model_state"], strict=True)
 
         if not reset_optimizer:
             self.optimizer.load_state_dict(model_checkpoint["optimizer_state"])
