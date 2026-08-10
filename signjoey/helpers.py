@@ -235,6 +235,7 @@ def load_checkpoint(path: str, use_cuda: bool = True) -> dict:
     assert os.path.isfile(path), "Checkpoint %s not found" % path
     # checkpoint = torch.load(path, map_location="cuda" if use_cuda else "cpu",weights_only=False)
     checkpoint = torch.load(path, map_location="cuda" if use_cuda else "cpu")
+
     return checkpoint
 
 
@@ -284,6 +285,7 @@ def freeze_params(module: nn.Module):
 
 
 def symlink_update(target, link_name):
+
     """
     Create a link (or copy) from target to link_name.
     On Google Drive, symbolic links are not supported, so we use copy instead.
@@ -305,6 +307,72 @@ def symlink_update(target, link_name):
         except Exception as e:
             print(f"Warning: Could not create link/copy {link_name}: {e}")
             return None
+        
 
-def _unpack_first(x):
-    return x[0] if isinstance(x, tuple) else x
+def load_checkpoint_partial(
+    model: nn.Module,
+    path: str,
+    use_cuda: bool = True,
+    logger: Optional[Logger] = None,
+) -> dict:
+    """
+    Load a checkpoint into `model` with strict=False, for cross-stage
+    warm-starts where the architecture changed (e.g. Stage 1 batch+softsign
+    -> Stage 2 layer+gelu): shapes that match transfer their weights,
+    keys present only in the checkpoint (e.g. IntBatchNorm1d's
+    running_mean/running_var) or only in the model (e.g. IntLayerNorm's
+    lack thereof) are reported and skipped rather than raising.
+
+    This is intentionally distinct from `helpers.load_checkpoint` +
+    `model.load_state_dict` (used for same-architecture resume/QAT
+    toggling, where strict=True is the correct safety net -- silently
+    dropping a mismatched key there would hide a real bug). Cross-stage
+    transitions are the ONE place a mismatch is expected and desired.
+
+    :param model: freshly built target-stage model (e.g. Stage 2, layer+gelu)
+    :param path: path to the SOURCE-stage checkpoint (e.g. Stage 1, batch+softsign)
+    :param use_cuda: map_location for the checkpoint
+    :param logger: optional logger; falls back to print if None
+    :return: the raw checkpoint dict (steps/optimizer_state are NOT
+        reused across stages -- optimizer/scheduler restart fresh,
+        since the parameter set changed)
+    """
+    log = logger.info if logger is not None else print
+
+    checkpoint = load_checkpoint(path=path, use_cuda=use_cuda)
+    src_state = checkpoint["model_state"]
+    tgt_state = model.state_dict()
+
+    transferred, shape_mismatch, missing_in_src, unused_in_tgt = [], [], [], []
+
+    for key, tgt_tensor in tgt_state.items():
+        if key not in src_state:
+            missing_in_src.append(key)
+            continue
+        src_tensor = src_state[key]
+        if src_tensor.shape != tgt_tensor.shape:
+            shape_mismatch.append(
+                f"{key}: src{tuple(src_tensor.shape)} vs tgt{tuple(tgt_tensor.shape)}"
+            )
+            continue
+        tgt_state[key] = src_tensor
+        transferred.append(key)
+
+    unused_in_tgt = [k for k in src_state.keys() if k not in tgt_state]
+
+    model.load_state_dict(tgt_state)
+
+    log(
+        "Partial checkpoint load from %s:\n"
+        "\tTransferred: %d tensors\n"
+        "\tSkipped (shape mismatch): %d -> %s\n"
+        "\tMissing in source (new tensors, kept at fresh init): %d -> %s\n"
+        "\tUnused source tensors (architecture no longer has them): %d -> %s",
+        path,
+        len(transferred),
+        len(shape_mismatch), shape_mismatch,
+        len(missing_in_src), missing_in_src,
+        len(unused_in_tgt), unused_in_tgt,
+    )
+
+    return checkpoint
