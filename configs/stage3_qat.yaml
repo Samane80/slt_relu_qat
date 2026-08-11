@@ -26,10 +26,10 @@ training:
   reset_scheduler: true
   reset_optimizer: true
   random_seed: 42
-  model_dir: "./stage3_qat"
+  model_dir: "/content/drive/MyDrive/slt_project/stage3_qat"
   overwrite: true
 
-  load_model: "./stage2_adapt/best.ckpt"
+  load_model: "/content/drive/MyDrive/slt_project/stage2_adapt/best.ckpt"
   load_model_mode: resume    # <-- معماری Stage2 و Stage3 کاملاً یکیه (فقط quantize فرق داره)
                               #     پس strict-load معمولی پروژه استفاده می‌شه، بدون خطا
 
