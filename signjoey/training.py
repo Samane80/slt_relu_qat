@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import torch
-import logging
+
 torch.backends.cudnn.deterministic = True
 
 import argparse
@@ -34,7 +34,8 @@ from torch import Tensor
 from torch.utils.tensorboard import SummaryWriter
 from torchtext.data import Dataset
 from typing import List, Dict
-
+from signjoey.helpers import load_checkpoint_partial
+from quantization_utils.model_utils import calibrate_activation_ranges
 
 # pylint: disable=too-many-instance-attributes
 class TrainManager:
@@ -77,6 +78,13 @@ class TrainManager:
         self.txt_pad_index = self.model.txt_pad_index
         self.txt_bos_index = self.model.txt_bos_index
         self._log_parameters_list()
+
+        # QAT calibration: فقط وقتی quantize=True است لازم است، چون فقط
+        # QuantAct یک آمار running (min_val/max_val) دارد که ممکن است هنوز
+        # کالیبره نشده باشد -- مثلاً دقیقاً همین Stage2(quantize=false)
+        # -> Stage3(quantize=true) شما، حتی با load_model_mode=resume.
+        self.quantize = config["model"].get("quantize", True)
+        self.calibration_batches = train_config.get("calibration_batches", 200)
         # Check if we are doing only recognition or only translation or both
         self.do_recognition = (
             config["training"].get("recognition_loss_weight", 1.0) > 0.0
@@ -197,18 +205,46 @@ class TrainManager:
         )
 
         # model parameters
+        # if "load_model" in train_config.keys():
+        #     model_load_path = train_config["load_model"]
+        #     self.logger.info("Loading model from %s", model_load_path)
+        #     reset_best_ckpt = train_config.get("reset_best_ckpt", False)
+        #     reset_scheduler = train_config.get("reset_scheduler", False)
+        #     reset_optimizer = train_config.get("reset_optimizer", False)
+        #     self.init_from_checkpoint(
+        #         model_load_path,
+        #         reset_best_ckpt=reset_best_ckpt,
+        #         reset_scheduler=reset_scheduler,
+        #         reset_optimizer=reset_optimizer,
+        #     )
+
+        # model parameters
         if "load_model" in train_config.keys():
             model_load_path = train_config["load_model"]
-            self.logger.info("Loading model from %s", model_load_path)
-            reset_best_ckpt = train_config.get("reset_best_ckpt", False)
-            reset_scheduler = train_config.get("reset_scheduler", False)
-            reset_optimizer = train_config.get("reset_optimizer", False)
-            self.init_from_checkpoint(
-                model_load_path,
-                reset_best_ckpt=reset_best_ckpt,
-                reset_scheduler=reset_scheduler,
-                reset_optimizer=reset_optimizer,
-            )
+            load_mode = train_config.get("load_model_mode", "resume")  # "resume" | "partial"
+
+            if load_mode == "partial":
+                self.logger.info(
+                    "Warm-starting from a different-architecture checkpoint: %s",
+                    model_load_path,
+                )
+                load_checkpoint_partial(
+                    model=self.model, path=model_load_path,
+                    use_cuda=self.use_cuda, logger=self.logger,
+                )
+                # optimizer/scheduler intentionally NOT restored: the parameter
+                # set changed (new norm module), so their state would be stale.
+            else:
+                self.logger.info("Loading model from %s", model_load_path)
+                reset_best_ckpt = train_config.get("reset_best_ckpt", False)
+                reset_scheduler = train_config.get("reset_scheduler", False)
+                reset_optimizer = train_config.get("reset_optimizer", False)
+                self.init_from_checkpoint(
+                    model_load_path,
+                    reset_best_ckpt=reset_best_ckpt,
+                    reset_scheduler=reset_scheduler,
+                    reset_optimizer=reset_optimizer,
+                )
 
     def _get_recognition_params(self, train_config) -> None:
         # NOTE (Cihan): The blank label is the silence index in the gloss vocabulary.
@@ -316,31 +352,8 @@ class TrainManager:
         """
         model_checkpoint = load_checkpoint(path=path, use_cuda=self.use_cuda)
 
-        
-        logger = logging.getLogger(__name__)
-        
-        model_state = model_checkpoint["model_state"]
-        loaded_keys = set(model_state.keys())
-        model_keys = set(model.state_dict().keys())
-        
-        missing = model_keys - loaded_keys
-        unexpected = loaded_keys - model_keys
-        
-        logger.warning(f"Missing keys: {len(missing)}")
-        if missing:
-            logger.warning(f"First 10 missing: {list(missing)[:10]}")
-        logger.warning(f"Unexpected keys: {len(unexpected)}")
-        if unexpected:
-            logger.warning(f"First 10 unexpected: {list(unexpected)[:10]}")
-
         # restore model and optimizer parameters
-        # self.model.load_state_dict(model_checkpoint["model_state"])
-        model.load_state_dict(checkpoint["model_state"], strict=True)
-        
-        for name, param in model.named_parameters():
-            if "txt_embed.lut.weight" in name:
-                print("Loaded txt_embed first 5 values:", param.flatten()[:5])
-                break
+        self.model.load_state_dict(model_checkpoint["model_state"])
 
         if not reset_optimizer:
             self.optimizer.load_state_dict(model_checkpoint["optimizer_state"])
@@ -386,6 +399,30 @@ class TrainManager:
             train=True,
             shuffle=self.shuffle,
         )
+
+        if self.quantize:
+            self.logger.info(
+                "Calibrating QuantAct activation ranges over %d batches "
+                "before QAT training starts (Stage3-style quantize=true run)...",
+                self.calibration_batches,
+            )
+            calib_iter = make_data_iter(
+                train_data,
+                batch_size=self.batch_size,
+                batch_type=self.batch_type,
+                train=True,
+                shuffle=self.shuffle,
+            )
+            n_used = calibrate_activation_ranges(
+                model=self.model,
+                train_iter=calib_iter,
+                txt_pad_index=self.txt_pad_index,
+                sgn_dim=self.feature_size,
+                use_cuda=self.use_cuda,
+                num_batches=self.calibration_batches,
+            )
+            self.logger.info("Calibration finished after %d batches.", n_used)
+
         epoch_no = None
         for epoch_no in range(self.epochs):
             self.logger.info("EPOCH %d", epoch_no + 1)
