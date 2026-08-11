@@ -130,7 +130,9 @@ def calibrate_activation_ranges(
                 sgn_dim=sgn_dim,
                 use_cuda=use_cuda,
             )
-
+            # فقط forward -- خروجی دور ریخته می‌شود، فقط برای اینکه هر
+            # QuantAct یک بار activation واقعی ببیند و min_val/max_val را
+            # از صفر خام خارج کند.
             model.run_batch(
                 batch=batch,
                 recognition_beam_size=1,
