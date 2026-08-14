@@ -90,6 +90,16 @@ def initialize_model(model: nn.Module, cfg: dict, txt_padding_idx: int) -> None:
                 p.zero_()
                 continue
 
+            # Normalization scale parameters must start at one, just like
+            # PyTorch's BatchNorm/LayerNorm defaults.  The old generic
+            # one-dimensional-parameter branch initialized them to zero,
+            # collapsing the pre-LN Transformer until those scales learned
+            # their way out of zero.  This check comes before the embedding
+            # branch because embedding norms are nested under txt/sgn_embed.
+            if name.endswith("norm.weight"):
+                p.fill_(1.0)
+                continue
+
             # --- embeddings ---
             if any(k in name for k in ("txt_embed", "gls_embed", "sgn_embed")):
                 if "lut" in name:
@@ -102,7 +112,7 @@ def initialize_model(model: nn.Module, cfg: dict, txt_padding_idx: int) -> None:
                     bias_init_fn_(p)
                 continue
 
-            # --- biases ---
+            # --- biases and other one-dimensional parameters ---
             if "bias" in name or p.dim() == 1:
                 bias_init_fn_(p)
                 continue

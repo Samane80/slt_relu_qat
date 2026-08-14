@@ -36,6 +36,11 @@ class QuantAct(nn.Module):
         self.running_stat = running_stat
         self.quant_mode = quant_mode
         self.quantize = quantize
+        # Observers are updated during training (or during the explicit
+        # calibration pass).  They must not be updated by validation: doing
+        # so makes a dev batch change the quantization grid and makes later
+        # training/evaluation results depend on how often validation ran.
+        self.calibrating = False
 
         self.register_buffer('min_val', torch.zeros(1))
         self.register_buffer('max_val', torch.zeros(1))
@@ -50,9 +55,21 @@ class QuantAct(nn.Module):
 
     def fix(self):
         self.running_stat = False
+        self.calibrating = False
 
     def unfix(self):
         self.running_stat = True
+        self.calibrating = False
+
+    def set_calibration_mode(self, enabled: bool = True):
+        """Enable/disable observer updates while the model is in eval mode.
+
+        Calibration deliberately runs with dropout and BatchNorm disabled;
+        this flag is the explicit exception that still lets the activation
+        observer see calibration data without making ordinary validation
+        mutate its state.
+        """
+        self.calibrating = bool(enabled)
 
     def forward(self, x,
                 pre_act_scaling_factor=None,
@@ -67,7 +84,7 @@ class QuantAct(nn.Module):
         with torch.no_grad():
             x_act = x if identity is None else identity + x
 
-            if self.running_stat:
+            if self.running_stat and (self.training or self.calibrating):
                 x_flat = x_act.reshape(-1)
                 cur_min = x_flat.min()
                 cur_max = x_flat.max()

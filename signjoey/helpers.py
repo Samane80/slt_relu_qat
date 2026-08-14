@@ -314,12 +314,13 @@ def load_checkpoint_partial(
     logger: Optional[Logger] = None,
 ) -> dict:
     """
-    Load a checkpoint into `model` with strict=False, for cross-stage
+    Load a checkpoint into `model` with strict=False semantics for cross-stage
     warm-starts where the architecture changed (e.g. Stage 1 batch+softsign
-    -> Stage 2 layer+gelu): shapes that match transfer their weights,
-    keys present only in the checkpoint (e.g. IntBatchNorm1d's
-    running_mean/running_var) or only in the model (e.g. IntLayerNorm's
-    lack thereof) are reported and skipped rather than raising.
+    -> Stage 2 layer+gelu).  Matching *learned parameters* are transferred;
+    observer/running-stat buffers are kept at the target-stage defaults, and
+    the embedding norm parameters whose semantics changed are skipped.  Keys
+    present only in the checkpoint or only in the model are reported rather
+    than raising.
 
     This is intentionally distinct from `helpers.load_checkpoint` +
     `model.load_state_dict` (used for same-architecture resume/QAT
@@ -342,10 +343,29 @@ def load_checkpoint_partial(
     tgt_state = model.state_dict()
 
     transferred, shape_mismatch, missing_in_src, unused_in_tgt = [], [], [], []
+    semantic_skip = []
+    target_parameters = dict(model.named_parameters())
+
+    def is_stage_specific_embedding_norm(key: str) -> bool:
+        # Stage 1 changes the *embedding* norm from BatchNorm to LayerNorm.
+        # Their affine tensors happen to have the same shape and the same
+        # state_dict suffix, but copying BatchNorm gamma/beta into LayerNorm
+        # is not a valid semantic warm-start.  Transformer block norms do not
+        # change between the stages and are intentionally retained.
+        return key.startswith(("sgn_embed.norm.norm.", "txt_embed.norm.norm."))
 
     for key, tgt_tensor in tgt_state.items():
         if key not in src_state:
             missing_in_src.append(key)
+            continue
+        # Buffers contain observer/running-stat state.  A cross-stage partial
+        # load must transfer learned parameters only; silently transferring a
+        # same-shaped quantizer buffer is another form of architecture
+        # mismatch.  Same-stage resume uses strict loading instead.
+        if key not in target_parameters:
+            continue
+        if is_stage_specific_embedding_norm(key):
+            semantic_skip.append(key)
             continue
         src_tensor = src_state[key]
         if src_tensor.shape != tgt_tensor.shape:
@@ -362,13 +382,15 @@ def load_checkpoint_partial(
 
     log(
         "Partial checkpoint load from %s:\n"
-        "\tTransferred: %d tensors\n"
+        "\tTransferred parameters: %d tensors\n"
         "\tSkipped (shape mismatch): %d -> %s\n"
-        "\tMissing in source (new tensors, kept at fresh init): %d -> %s\n"
+        "\tSkipped (stage-specific semantics): %d -> %s\n"
+        "\tMissing in source (new tensors/buffers, kept at fresh init): %d -> %s\n"
         "\tUnused source tensors (architecture no longer has them): %d -> %s",
         path,
         len(transferred),
         len(shape_mismatch), shape_mismatch,
+        len(semantic_skip), semantic_skip,
         len(missing_in_src), missing_in_src,
         len(unused_in_tgt), unused_in_tgt,
     )

@@ -111,7 +111,9 @@ def validate_on_data(
         train=False,
     )
 
-    # disable dropout
+    # disable dropout; remember the caller's mode so validation itself is
+    # side-effect free (especially important for repeated train/dev probes).
+    was_training = model.training
     model.eval()
     # don't track gradients during validation
     with torch.no_grad():
@@ -278,6 +280,8 @@ def validate_on_data(
         results["txt_ref"] = txt_ref
         results["txt_hyp"] = txt_hyp
 
+    if was_training:
+        model.train()
     return results
 
 
