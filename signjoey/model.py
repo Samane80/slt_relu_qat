@@ -298,6 +298,7 @@ class SignModel(nn.Module):
                     eos_index=self.txt_eos_index,
                     decoder=self.decoder,
                     max_output_length=translation_max_output_length,
+                    pad_index=self.txt_pad_index,
                 )
             else:
                 stacked_txt_output, stacked_attention_scores = beam_search(

@@ -174,6 +174,7 @@ def build_scheduler(
                 threshold_mode="abs",
                 factor=config.get("decrease_factor", 0.1),
                 patience=config.get("patience", 10),
+                min_lr=config.get("learning_rate_min", 0.0),
             ),
             "validation",
         )

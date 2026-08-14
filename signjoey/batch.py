@@ -119,11 +119,17 @@ class Batch:
         """
         self.sgn = self.sgn.cuda()
         self.sgn_mask = self.sgn_mask.cuda()
+        self.sgn_lengths = self.sgn_lengths.cuda()
 
         if self.txt_input is not None:
             self.txt = self.txt.cuda()
             self.txt_mask = self.txt_mask.cuda()
             self.txt_input = self.txt_input.cuda()
+            self.txt_lengths = self.txt_lengths.cuda()
+
+        if self.gls is not None:
+            self.gls = self.gls.cuda()
+            self.gls_lengths = self.gls_lengths.cuda()
 
     def sort_by_sgn_lengths(self):
         """

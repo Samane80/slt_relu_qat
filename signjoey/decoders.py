@@ -56,6 +56,11 @@ class TransformerDecoder(Decoder):
         self.qact_after_ln = QuantAct()
         self.dropout = nn.Dropout(emb_dropout)
         self.vocab_size = vocab_size
+        # Decoder.output_size is used by beam search to flatten the
+        # (beam, vocabulary) scores.  TransformerDecoder never initialized
+        # the base-class attribute, so beam_size >= 2 failed with an
+        # AttributeError instead of decoding.
+        self._output_size = vocab_size
 
         self.output_layer = QuantLinear(hidden_size, vocab_size)
         self.qact_output = QuantAct(16)

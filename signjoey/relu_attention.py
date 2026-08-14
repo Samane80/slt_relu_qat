@@ -61,6 +61,8 @@ class MinMaxObserver(nn.Module):
         self.register_buffer("num_batches_tracked", torch.tensor(0, dtype=torch.long))
         self.register_buffer("scale", torch.tensor(1.0))
         self.register_buffer("zero_point", torch.tensor(0, dtype=torch.int32))
+        self.calibrating = False
+        self._observer_frozen = False
 
         if unsigned:
             self.qmin, self.qmax = 0, 2 ** num_bits - 1
@@ -82,7 +84,11 @@ class MinMaxObserver(nn.Module):
         self.zero_point.copy_(zp)
 
     def forward(self, x: Tensor) -> Tensor:
-        if self.training or self.num_batches_tracked == 0:
+        # Do not let eval/validation batches update the observer.  The old
+        # ``num_batches_tracked == 0`` fallback made the first validation
+        # pass silently alter the QAT state; calibration now enables updates
+        # explicitly via ``set_calibration_mode``.
+        if (self.training or self.calibrating) and not self._observer_frozen:
             cur_min = x.detach().min()
             cur_max = x.detach().max()
             if self.unsigned:
@@ -104,7 +110,15 @@ class MinMaxObserver(nn.Module):
         return self.scale.clone(), self.zero_point.clone()
 
     def fix(self):
-        self.training_frozen = True
+        self._observer_frozen = True
+        self.calibrating = False
+
+    def unfix(self):
+        self._observer_frozen = False
+        self.calibrating = False
+
+    def set_calibration_mode(self, enabled: bool = True):
+        self.calibrating = bool(enabled)
 
     def reset(self):
         self.min_val.fill_(float("inf"))
@@ -112,6 +126,7 @@ class MinMaxObserver(nn.Module):
         self.num_batches_tracked.zero_()
         self.scale.fill_(1.0)
         self.zero_point.zero_()
+        self._observer_frozen = False
 
 
 # I-ViT Dyadic Arithmetic helpers
@@ -208,12 +223,12 @@ class IntegerReLUFormerAttention(nn.Module):
         the calibrated output scale). Call this AFTER QAT fine-tuning and
         BEFORE using `forward_integer` for real deployment."""
         self.log_gamma.requires_grad_(False)
-        self.weight_observer.running_stat = False
+        self.weight_observer.fix()
         self._gamma_frozen = True
 
     def unfix(self):
         self.log_gamma.requires_grad_(True)
-        self.weight_observer.running_stat = True
+        self.weight_observer.unfix()
         self._gamma_frozen = False
 
     # ----- mask helpers -----

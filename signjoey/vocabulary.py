@@ -119,8 +119,13 @@ class TextVocabulary(Vocabulary):
         sentence = []
         for i in array:
             s = self.itos[i]
-            if cut_at_eos and s == EOS_TOKEN:
+            # PAD is introduced by batching/beam search and is never part of
+            # a decoded sentence.  Stopping on it also handles the no-EOS
+            # fallback at the configured maximum output length.
+            if cut_at_eos and s in (EOS_TOKEN, PAD_TOKEN):
                 break
+            if s == BOS_TOKEN:
+                continue
             sentence.append(s)
         return sentence
 

@@ -197,7 +197,8 @@ class Embeddings(nn.Module):
         self.activation_type = activation_type
         if self.activation_type:
             self.activation = get_activation(activation_type)
-            # چون فقط gelu پشتیبانی میشه، همیشه به QuantAct بعد از اون نیاز داریم
+            # Both supported integer activations are followed by a
+            # re-quantization point.
             self.qact_after_act = QuantAct()
 
         self.scale = scale
@@ -227,14 +228,13 @@ class Embeddings(nn.Module):
             x, sf = self.qact_after_norm(x, sf)
 
         if self.activation_type:
-            if self.activation_type == "softsign":
-                x, sf = self.activation(x, sf)
-                x, sf = self.qact_after_act(x, sf)
-            else:
-                raise ValueError(
-                    f"Only 'gelu' (IntGELU) is supported in the integer-only QAT pipeline. "
-                    f"Got activation_type='{self.activation_type}'"
-                )
+            # Both IntSoftsign and IntGELU implement the same
+            # ``(x, scaling_factor) -> (x, scaling_factor)`` contract.  The
+            # previous branch accidentally accepted only ``softsign`` and
+            # raised for the configured ``gelu`` path, making Stage 2/3
+            # impossible to run.
+            x, sf = self.activation(x, sf)
+            x, sf = self.qact_after_act(x, sf)
 
         return x, sf
 
@@ -323,15 +323,10 @@ class SpatialEmbeddings(nn.Module):
             x, sf = self.qact_after_norm(x, sf)
 
         if self.activation_type:
-            if self.activation_type == "softsign":
-                x, sf = self.activation(x, sf)
-                x, sf = self.qact_after_act(x, sf)
-            else:
-                raise ValueError(
-                    f"Only 'gelu' (IntGELU) is supported in the integer-only QAT pipeline. "
-                    f"Got activation_type='{self.activation_type}'"
-                )
-
+            # Keep the activation dispatch symmetric with Embeddings.  GELU
+            # and Softsign both consume/return the QAT scale tuple.
+            x, sf = self.activation(x, sf)
+            x, sf = self.qact_after_act(x, sf)
 
         if self.scale:
             x = x * self.scale_factor
